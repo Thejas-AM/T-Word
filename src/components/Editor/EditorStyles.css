@@ -1,0 +1,98 @@
+/* src/components/Editor/EditorStyles.css */
+.ProseMirror {
+  min-height: 100%;
+  outline: none;
+  /* Reset counter for pages within the editor if we were doing paged media inside */
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  color: #adb5bd;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Typography Overrides for MS Word feel */
+.ProseMirror h1 {
+  font-size: 2.125rem; /* 34px */
+  font-weight: 400;
+  line-height: 1.235;
+  letter-spacing: 0.00735em;
+  color: #2b579a;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.ProseMirror h2 {
+  font-size: 1.5rem; /* 24px */
+  font-weight: 400;
+  line-height: 1.334;
+  letter-spacing: 0em;
+  color: #2b579a;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.ProseMirror h3 {
+  font-size: 1.25rem; /* 20px */
+  font-weight: 500;
+  line-height: 1.6;
+  letter-spacing: 0.0075em;
+  color: #444;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Page Break Styling */
+.page-break {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 2rem 0;
+  height: 20px;
+  background-color: #f0f0f0;
+  border-top: 1px dashed #ccc;
+  border-bottom: 1px dashed #ccc;
+  position: relative;
+  page-break-after: always;
+  user-select: none;
+  counter-increment: page-counter; /* Increment page counter */
+}
+
+.page-break-label {
+  font-size: 10px;
+  color: #888;
+  text-transform: uppercase;
+  background: #f0f0f0;
+  padding: 0 10px;
+}
+
+/* 
+   We want to show "Page X" dynamically. 
+   Since Tiptap is one long stream, we can't easily put page numbers at the bottom of "pages".
+   However, we can hack it: The page break is the START of a new page.
+   So we can put a "Page X" marker on the page break itself if we wanted.
+   
+   For now, the footer on the main paper shows "Page 1" (static) because dynamic pagination 
+   in a single contenteditable is very hard. 
+   
+   BUT, if we want to simulate it, we can use the counter in the page break label.
+*/
+.page-break::after {
+  content: "Page " counter(page-counter);
+  position: absolute;
+  right: 10px;
+  font-size: 10px;
+  color: #666;
+}
+
+/* Print simulation */
+@media print {
+  .page-break {
+    display: block;
+    height: 0;
+    margin: 0;
+    border: none;
+  }
+}
