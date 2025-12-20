@@ -16,6 +16,9 @@ import { PageBreak } from '../components/Editor/extensions/PageBreak';
 import Header from '../components/Layout/Header';
 import Editor from '../components/Editor/Editor';
 import Sidebar from '../components/Layout/Sidebar';
+import Page from '../components/Editor/extensions/Page';
+import { PageNumberDecoration } from '../components/Editor/extensions/PageNumberDecoration';
+import { autoPaginate } from '../components/Editor/pagination';
 
 const Home: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -35,11 +38,18 @@ const Home: React.FC = () => {
       Color,
       Highlight.configure({ multicolor: true }),
       FontFamily,
-      PageBreak ,
+      PageBreak,
+      Page
     ],
+    onCreate({ editor }) {
+      editor.registerPlugin(PageNumberDecoration)
+    },
     content: `
-      <h1>Welcome to T-Letter</h1>
-      <p>This is a simple clone of MS Word. You can start typing here.</p>
+      <div data-page>
+        <h1>Welcome to T-Letter</h1>
+        <p>This is a simple clone of MS Word. You can start typing here.</p>
+        
+      </div>
     `,
     editorProps: {
       attributes: {
@@ -47,13 +57,22 @@ const Home: React.FC = () => {
       },
     },
     onUpdate: ({ editor }) => {
+
+      let rafId: number | null = null;
+
+      if (rafId) cancelAnimationFrame(rafId)
+
+      rafId = requestAnimationFrame(() => {
+        autoPaginate(editor)
+      })
+
       // Dispatch content to Redux
       dispatch(setEditorContent(editor.getHTML()));
 
       // Extract headings for Sidebar
       const headings: { level: number; text: string; id: string; pos: number }[] = [];
       editor.state.doc.descendants((node, pos) => {
-        console.log(node)
+        // console.log(node)
         if (node.type.name === 'heading') {
           headings.push({
             level: node.attrs.level,

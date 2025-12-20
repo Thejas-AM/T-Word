@@ -1,61 +1,32 @@
-import React from 'react';
-import { Editor as TiptapEditor, EditorContent } from '@tiptap/react';
-import { Box, Paper } from '@mui/material';
+import React, { useEffect } from 'react'
+import { EditorContent, Editor as TiptapEditor } from '@tiptap/react'
+import { Box } from '@mui/material'
 import Toolbar from './Toolbar';
+import './styles.css'
 import './EditorStyles.css';
 
-interface EditorProps {
-  editor: TiptapEditor | null;
+interface Props {
+  editor: TiptapEditor | null
 }
 
-const Editor: React.FC<EditorProps> = ({ editor }) => {
-  if (!editor) {
-    return null;
-  }
+const Editor: React.FC<Props> = ({ editor }) => {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', bgcolor: '#f0f2f5' }}>
       <Toolbar editor={editor} />
-      
-      <Box 
-        sx={{ 
-          flexGrow: 1, 
-          overflowY: 'auto', 
-          display: 'flex', 
-          justifyContent: 'center', 
-          p: 4,
-          counterReset: 'page-counter'
+      <Box
+        sx={{
+          height: '100vh',
+          overflowY: 'auto',
+          bgcolor: '#f0f2f5',
+          padding: 4,
         }}
+        // onClick={() => editor.chain().focus().run()}
       >
-        <Paper 
-          elevation={3}
-          sx={{
-            width: '210mm',
-            minHeight: '297mm',
-            padding: '25mm',
-            backgroundColor: 'white',
-            marginBottom: '2rem',
-            cursor: 'text',
-            position: 'relative',
-          }}
-          onClick={() => editor?.chain().focus().run()}
-        >
-           {/* Header Simulation */}
-           <Box sx={{ position: 'absolute', top: '10mm', left: 0, right: 0, textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none' }}>
-            Header - T-Letter Document
-          </Box>
-
-          <EditorContent editor={editor} />
-
-           {/* Footer Simulation */}
-           <Box sx={{ position: 'absolute', bottom: '10mm', left: 0, right: 0, textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none' }}>
-             Footer - Page <span className="page-number">1</span>
-          </Box>
-        </Paper>
-        
+        <EditorContent editor={editor} />
       </Box>
     </Box>
-  );
-};
+  )
+}
 
-export default Editor;
+export default Editor

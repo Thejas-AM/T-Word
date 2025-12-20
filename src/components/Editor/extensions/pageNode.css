@@ -1,0 +1,35 @@
+.a4-page {
+  width: 210mm;
+  height: 297mm;
+  padding: 25mm 20mm;
+  margin: 20px auto;
+  background: white;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 10px rgba(0,0,0,0.15);
+}
+
+/* Header & Footer */
+.page-header,
+.page-footer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 0.8rem;
+  color: #999;
+  pointer-events: none;
+}
+
+.page-header {
+  top: 10mm;
+}
+
+.page-footer {
+  bottom: 10mm;
+}
+
+/* Editor spacing fix */
+.ProseMirror {
+  outline: none;
+}
