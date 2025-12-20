@@ -19,6 +19,7 @@ import Sidebar from '../components/Layout/Sidebar';
 import Page from '../components/Editor/extensions/Page';
 import { PageNumberDecoration } from '../components/Editor/extensions/PageNumberDecoration';
 import { autoPaginate } from '../components/Editor/pagination';
+import { SpanParagraph } from '../components/Editor/extensions/Paragraph';
 
 const Home: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -27,6 +28,7 @@ const Home: React.FC = () => {
   const editor = useEditor({
     extensions: [
       StarterKit,
+      SpanParagraph,
       Underline,
       TextAlign.configure({
         types: ['heading', 'paragraph'],
@@ -65,24 +67,24 @@ const Home: React.FC = () => {
       rafId = requestAnimationFrame(() => {
         autoPaginate(editor)
       })
-
-      // Dispatch content to Redux
-      dispatch(setEditorContent(editor.getHTML()));
-
-      // Extract headings for Sidebar
-      const headings: { level: number; text: string; id: string; pos: number }[] = [];
-      editor.state.doc.descendants((node, pos) => {
-        // console.log(node)
-        if (node.type.name === 'heading') {
-          headings.push({
-            level: node.attrs.level,
-            text: node.textContent,
-            id: pos.toString(), 
-            pos: pos
-          });
-        }
-      });
-      dispatch(setHeadings(headings));
+        
+        // Dispatch content to Redux
+        dispatch(setEditorContent(editor.getHTML()));
+        
+        // Extract headings for Sidebar
+        const headings: { level: number; text: string; id: string; pos: number }[] = [];
+        editor.state.doc.descendants((node, pos) => {
+          // console.log(node)
+          if (node.type.name === 'heading') {
+            headings.push({
+              level: node.attrs.level,
+              text: node.textContent,
+              id: pos.toString(), 
+              pos: pos
+            });
+          }
+        });
+        dispatch(setHeadings(headings));
     },
   });
 

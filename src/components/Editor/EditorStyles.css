@@ -44,6 +44,12 @@
   margin-bottom: 0.5rem;
 }
 
+/* Custom span-based paragraphs should still behave like block elements */
+.pm-paragraph {
+  display: block;
+  margin: 0 0 0.75rem 0;
+}
+
 /* Page Break Styling */
 .page-break {
   display: flex;

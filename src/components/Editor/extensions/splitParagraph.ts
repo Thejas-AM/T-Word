@@ -1,6 +1,7 @@
 export function findSplitOffset(
   paragraphEl: HTMLElement,
-  maxHeight: number
+  maxHeight: number,
+  pageTop: number
 ): number | null {
   const range = document.createRange()
   const walker = document.createTreeWalker(
@@ -20,7 +21,8 @@ export function findSplitOffset(
       if (!rects.length) continue
 
       const lastRect = rects[rects.length - 1]
-      if (lastRect.bottom > maxHeight) {
+      // Check if the bottom of the text line exceeds the allowed height relative to the page top
+      if (lastRect.bottom - pageTop > maxHeight) {
         return offset + i - 1
       }
     }
