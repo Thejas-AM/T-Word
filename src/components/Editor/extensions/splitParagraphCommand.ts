@@ -8,15 +8,20 @@ export function splitParagraphAcrossPages(
   splitOffset: number
 ) {
   editor.commands.command(({ tr, state }) => {
+    // Find all page positions
     const pagePositions: number[] = []
-
     state.doc.descendants((node, pos) => {
       if (node.type.name === 'page') pagePositions.push(pos)
     })
 
     const pagePos = pagePositions[pageIndex]
-    let blockPos = pagePos + 1
+    if (pagePos === undefined) return false
 
+    // Find the block position within the page
+    const pageNode = state.doc.nodeAt(pagePos)
+    if (!pageNode) return false
+
+    let blockPos = pagePos + 1
     for (let i = 0; i < blockIndex; i++) {
       const n = state.doc.nodeAt(blockPos)
       if (!n) return false
@@ -26,27 +31,48 @@ export function splitParagraphAcrossPages(
     const para = state.doc.nodeAt(blockPos)
     if (!para || para.type.name !== 'paragraph') return false
 
-    const text = para.textContent
+    // Use content.cut() to preserve marks (bold, italic, etc.)
+    const beforeContent = para.content.cut(0, splitOffset)
+    const afterContent = para.content.cut(splitOffset)
 
-    const before = state.schema.text(text.slice(0, splitOffset))
-    const after = state.schema.text(text.slice(splitOffset))
+    // Create new paragraphs preserving the original paragraph's attributes
+    const beforePara = state.schema.nodes.paragraph.create(para.attrs, beforeContent)
+    const afterPara = state.schema.nodes.paragraph.create(para.attrs, afterContent)
 
-    const beforePara = state.schema.nodes.paragraph.create(null, before)
-    const afterPara = state.schema.nodes.paragraph.create(null, after)
-
+    // Replace the original paragraph with the "before" part
     tr.replaceWith(blockPos, blockPos + para.nodeSize, beforePara)
 
-    // Create next page if missing
-    if (!pagePositions[pageIndex + 1]) {
+    // Now we need to find/create the next page and insert "after" content
+    // Important: use tr.doc for all position lookups after modifications
+
+    // Recalculate page positions on the modified document
+    const newPagePositions: number[] = []
+    tr.doc.descendants((node, pos) => {
+      if (node.type.name === 'page') newPagePositions.push(pos)
+    })
+
+    let nextPagePos = newPagePositions[pageIndex + 1]
+
+    // If next page doesn't exist, create it
+    if (nextPagePos === undefined) {
       const emptyPara = state.schema.nodes.paragraph.create()
-      const pageNode = state.schema.nodes.page.create(null, emptyPara)
-      tr.insert(state.doc.content.size, pageNode)
+      const newPage = state.schema.nodes.page.create(null, emptyPara)
+
+      // Insert at the end of the document
+      const insertPos = tr.doc.content.size
+      tr.insert(insertPos, newPage)
+
+      // The new page starts at insertPos
+      nextPagePos = insertPos
     }
 
-    const insertPos = pagePositions[pageIndex + 1] + 1
+    // Insert the "after" paragraph at the START of the next page
+    // +1 to get inside the page node
+    const insertPos = nextPagePos + 1
     tr.insert(insertPos, afterPara)
 
-    // ✅ Cursor goes to start of overflowed text
+    // Set cursor to the start of the overflowed text on the new page
+    // +1 for page node, +1 for paragraph node
     const $pos = tr.doc.resolve(insertPos + 1)
     tr.setSelection(TextSelection.near($pos))
 

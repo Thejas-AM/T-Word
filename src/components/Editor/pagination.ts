@@ -29,42 +29,52 @@ let isPaginating = false
 
 export function autoPaginate(editor: Editor) {
   if (editor.isDestroyed || isPaginating) return
-  
+
   isPaginating = true
 
   requestAnimationFrame(() => {
     try {
-        const { from } = editor.state.selection
-        const pages = document.querySelectorAll('.a4-page')
-        if (pages.length === 0) return
+      const pages = document.querySelectorAll('.a4-page')
+      if (pages.length === 0) {
+        isPaginating = false
+        return
+      }
 
-        // Check all pages to handle cascading overflows
-        for (let i = 0; i < pages.length; i++) {
-             // If a page changes, we might need to re-evaluate subsequent pages.
-             // But for now, a simple pass should catch immediate overflows.
-             // If a block moves from i to i+1, the next iteration (i+1) will check i+1.
-             // However, `pages` is a static NodeList (querySelectorAll).
-             // If we create a new page, it won't be in `pages`.
-             // So we should re-query or handle it. 
-             // Since we loop by index, if we add a page, the length of *actual* pages increases.
-             // But our `pages` variable is stale.
-             
-             // Dynamic check:
-             const currentPages = document.querySelectorAll('.a4-page')
-             if (i >= currentPages.length) break;
-             
-             const changed = paginateFromPage(editor, i)
-             if (!changed) {
-               fillUnderflow(editor, i)
-             }
+      // Keep iterating until no changes are made (handles cascading overflows)
+      let maxIterations = 20 // Prevent infinite loops
+      let changed = true
+
+      while (changed && maxIterations > 0) {
+        changed = false
+        maxIterations--
+
+        // Re-query pages after each iteration since DOM may have changed
+        const currentPages = document.querySelectorAll('.a4-page')
+
+        for (let i = 0; i < currentPages.length; i++) {
+          if (paginateFromPage(editor, i)) {
+            changed = true
+            break // Restart from beginning after a change
+          }
         }
-        
-        // Cleanup empty pages
-        removeEmptyPages(editor)
-        editor.chain().focus().run()
+
+        if (!changed) {
+          // Try fill underflow
+          for (let i = 0; i < currentPages.length - 1; i++) {
+            if (fillUnderflow(editor, i)) {
+              changed = true
+              break
+            }
+          }
+        }
+      }
+
+      // Cleanup empty pages
+      removeEmptyPages(editor)
+      editor.chain().focus().run()
 
     } finally {
-        isPaginating = false
+      isPaginating = false
     }
   })
 }
@@ -77,37 +87,37 @@ function paginateFromPage(editor: Editor, pageIndex: number): boolean {
 
   const maxHeight = page.clientHeight - HEADER_FOOTER_SPACE
   const pageTop = page.getBoundingClientRect().top
-  
+
   // Get direct children that are content blocks
   const blocks = Array.from(page.children).filter(
     el =>
       !el.classList.contains('page-header') &&
       !el.classList.contains('page-footer') &&
-      !el.hasAttribute('data-page') // Ensure we don't pick up the page itself if nested
+      !el.hasAttribute('data-page')
   ) as HTMLElement[]
 
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i]
-    
+
     // Calculate relative bottom position
     const blockRect = block.getBoundingClientRect()
     const relativeBottom = blockRect.bottom - pageTop
-    
+
     // Check if this block pushes past the limit
     if (relativeBottom > maxHeight) {
       resolveOverflow(editor, pageIndex, i, block, maxHeight, pageTop)
-      return true 
+      return true
     }
   }
   return false
 }
 
 // ================= FILL UNDERFLOW =================
-function fillUnderflow(editor: Editor, pageIndex: number) {
+function fillUnderflow(editor: Editor, pageIndex: number): boolean {
   const pages = document.querySelectorAll('.a4-page')
   const page = pages[pageIndex] as HTMLElement
   const nextPage = pages[pageIndex + 1] as HTMLElement
-  if (!page || !nextPage) return
+  if (!page || !nextPage) return false
 
   const maxHeight = page.clientHeight - HEADER_FOOTER_SPACE
   const pageTop = page.getBoundingClientRect().top
@@ -124,7 +134,7 @@ function fillUnderflow(editor: Editor, pageIndex: number) {
     ? lastBlock.getBoundingClientRect().bottom - pageTop
     : 0
   const available = maxHeight - used
-  if (available <= 0) return
+  if (available <= 20) return false // Need at least 20px margin
 
   const nextBlocks = Array.from(nextPage.children).filter(
     el =>
@@ -133,13 +143,15 @@ function fillUnderflow(editor: Editor, pageIndex: number) {
       !el.hasAttribute('data-page')
   ) as HTMLElement[]
 
-  if (nextBlocks.length === 0) return
+  if (nextBlocks.length === 0) return false
 
   const candidate = nextBlocks[0]
   const h = candidate.getBoundingClientRect().height
   if (h <= available) {
     moveBlockUp(editor, pageIndex + 1, 0, pageIndex)
+    return true
   }
+  return false
 }
 
 // ================= OVERFLOW HANDLER =================
@@ -151,7 +163,7 @@ function resolveOverflow(
   maxHeight: number,
   pageTop: number
 ) {
-  // 1️⃣ Split paragraph (Word behavior)
+  // 1️⃣ Try to split paragraph (Word behavior)
   if (block.classList.contains('pm-paragraph')) {
     const splitOffset = findSplitOffset(block, maxHeight, pageTop)
     if (splitOffset !== null && splitOffset > 0) {
@@ -160,77 +172,76 @@ function resolveOverflow(
     }
   }
 
-  // 2️⃣ Move whole block
+  // 2️⃣ Move whole block to next page
   moveBlock(editor, pageIndex, blockIndex)
 }
 
-// ================= MOVE BLOCK =================
+// ================= MOVE BLOCK TO NEXT PAGE =================
 function moveBlock(editor: Editor, pageIndex: number, blockIndex: number) {
   editor.commands.command(({ tr, state }) => {
+    // Find all page positions
     const pagePositions: number[] = []
-
     state.doc.descendants((node, pos) => {
       if (node.type.name === 'page') pagePositions.push(pos)
     })
 
     const fromPagePos = pagePositions[pageIndex]
-    
-    // Find absolute position of the block
+    if (fromPagePos === undefined) return false
+
+    // Find the block position within the page
     const pageNode = state.doc.nodeAt(fromPagePos)
     if (!pageNode) return false
-    
-    let foundPos = -1
-    let childCount = 0
+
+    let blockPos = -1
+    let idx = 0
     pageNode.forEach((child, offset) => {
-        if (childCount === blockIndex) {
-            foundPos = fromPagePos + 1 + offset
-        }
-        childCount++
+      if (idx === blockIndex) {
+        blockPos = fromPagePos + 1 + offset
+      }
+      idx++
     })
-    
-    if (foundPos === -1) return false
-    
-    const node = state.doc.nodeAt(foundPos)
+
+    if (blockPos === -1) return false
+
+    const node = state.doc.nodeAt(blockPos)
     if (!node) return false
 
-    // If next page exists, use it. Else create it.
-    let toPagePos = pagePositions[pageIndex + 1]
-    
-    if (toPagePos === undefined) {
-         // Create new page
-         const emptyPara = state.schema.nodes.paragraph.create()
-         const newPage = state.schema.nodes.page.create(null, emptyPara)
-         tr.insert(state.doc.content.size, newPage)
-         toPagePos = state.doc.content.size - newPage.nodeSize // This might be wrong if we just inserted at end.
-         // Recalculate toPagePos correctly
-         toPagePos = tr.doc.content.size - newPage.nodeSize
+    // Check if next page exists
+    let nextPagePos = pagePositions[pageIndex + 1]
+    let createdNewPage = false
+
+    if (nextPagePos === undefined) {
+      // Create new page at the end of document
+      const emptyPara = state.schema.nodes.paragraph.create()
+      const newPage = state.schema.nodes.page.create(null, emptyPara)
+      const insertPos = state.doc.content.size
+      tr.insert(insertPos, newPage)
+      nextPagePos = insertPos
+      createdNewPage = true
     }
 
-    // Move the node
-    tr.delete(foundPos, foundPos + node.nodeSize)
-    
-    // Re-calculate toPagePos because deletion shifted positions?
-    // If deletion was BEFORE insertion (it shouldn't be, toPagePos is > foundPos usually),
-    // but if we move from Page 1 to Page 2, Page 1 is before Page 2.
-    // So foundPos < toPagePos.
-    // Deleting at foundPos shifts toPagePos by -node.nodeSize.
-    
-    let targetPos = toPagePos
-    if (foundPos < toPagePos) {
-        targetPos -= node.nodeSize
-    }
-    
-    // We want to insert at the START of the target page content
-    tr.insert(targetPos + 1, node)
+    // Delete the block from current page
+    tr.delete(blockPos, blockPos + node.nodeSize)
 
-    const $sel = tr.doc.resolve(targetPos + 2)
+    // Adjust nextPagePos if deletion was before it
+    let adjustedNextPagePos = nextPagePos
+    if (!createdNewPage && blockPos < nextPagePos) {
+      adjustedNextPagePos -= node.nodeSize
+    }
+
+    // Insert at the START of the next page's content
+    const insertPos = adjustedNextPagePos + 1
+    tr.insert(insertPos, node)
+
+    // Position cursor in the moved block
+    const $sel = tr.doc.resolve(insertPos + 1)
     tr.setSelection(TextSelection.near($sel))
 
     return true
   })
 }
 
-// ================= MOVE BLOCK UP =================
+// ================= MOVE BLOCK UP TO PREVIOUS PAGE =================
 function moveBlockUp(editor: Editor, fromPageIndex: number, blockIndex: number, toPageIndex: number) {
   editor.commands.command(({ tr, state }) => {
     const pagePositions: number[] = []
@@ -240,81 +251,91 @@ function moveBlockUp(editor: Editor, fromPageIndex: number, blockIndex: number, 
 
     const fromPagePos = pagePositions[fromPageIndex]
     const toPagePos = pagePositions[toPageIndex]
+    if (fromPagePos === undefined || toPagePos === undefined) return false
+
     const fromPageNode = state.doc.nodeAt(fromPagePos)
     const toPageNode = state.doc.nodeAt(toPagePos)
     if (!fromPageNode || !toPageNode) return false
 
-    let foundPos = -1
+    // Find the block position
+    let blockPos = -1
     let idx = 0
     fromPageNode.forEach((child, offset) => {
       if (idx === blockIndex) {
-        foundPos = fromPagePos + 1 + offset
+        blockPos = fromPagePos + 1 + offset
       }
       idx++
     })
-    if (foundPos === -1) return false
+    if (blockPos === -1) return false
 
-    const node = state.doc.nodeAt(foundPos)
+    const node = state.doc.nodeAt(blockPos)
     if (!node) return false
 
-    tr.delete(foundPos, foundPos + node.nodeSize)
+    // Delete from source page
+    tr.delete(blockPos, blockPos + node.nodeSize)
 
+    // Calculate insert position at the END of the target page's content
+    // toPageNode.nodeSize includes the opening and closing tags (+2)
+    // So content ends at toPagePos + toPageNode.nodeSize - 1
     let insertPos = toPagePos + toPageNode.nodeSize - 1
-    if (foundPos < insertPos) {
+
+    // Adjust if deletion was before insert position
+    if (blockPos < insertPos) {
       insertPos -= node.nodeSize
     }
+
     tr.insert(insertPos, node)
+
     const $sel = tr.doc.resolve(insertPos + 1)
     tr.setSelection(TextSelection.near($sel))
+
     return true
   })
 }
 
 // ================= REMOVE EMPTY PAGES =================
 function removeEmptyPages(editor: Editor) {
-    editor.commands.command(({ tr, state }) => {
-        let modified = false
-        const pages: { pos: number, node: any }[] = []
-        state.doc.descendants((node, pos) => {
-            if (node.type.name === 'page') {
-                pages.push({ pos, node })
-            }
-        })
-        
-        let remainingPages = pages.length
+  editor.commands.command(({ tr, state }) => {
+    let modified = false
+    const pages: { pos: number, node: any }[] = []
 
-        // Iterate backwards
-        for (let i = pages.length - 1; i >= 0; i--) {
-            const { pos, node } = pages[i]
-            
-            // Don't remove the only page
-            if (remainingPages <= 1) break;
-            
-            // Check if page is effectively empty (contains only empty paragraph)
-            let isEmpty = false
-            if (node.childCount === 0) {
-                isEmpty = true
-            } else if (node.childCount === 1) {
-                const child = node.child(0)
-                if (child.type.name === 'paragraph' && child.textContent === '') {
-                     isEmpty = true
-                }
-            }
-            
-            if (isEmpty) {
-                 tr.delete(pos, pos + node.nodeSize)
-                 modified = true
-                 remainingPages--
-            }
-        }
-        return modified
+    state.doc.descendants((node, pos) => {
+      if (node.type.name === 'page') {
+        pages.push({ pos, node })
+      }
     })
-}
 
-function createNextPage(tr: any, state: any) {
-  const para = state.schema.nodes.paragraph.create()
-  const page = state.schema.nodes.page.create(null, para)
-  const pos = tr.doc.content.size
-  tr.insert(pos, page)
-  return pos
+    // Don't remove if only one page
+    if (pages.length <= 1) return false
+
+    // Iterate backwards to handle position shifts correctly
+    for (let i = pages.length - 1; i >= 0; i--) {
+      const { pos, node } = pages[i]
+
+      // Always keep at least one page
+      if (pages.length - (modified ? 1 : 0) <= 1) break
+
+      // Check if page is effectively empty
+      let isEmpty = false
+      if (node.childCount === 0) {
+        isEmpty = true
+      } else if (node.childCount === 1) {
+        const child = node.child(0)
+        if (child.type.name === 'paragraph' && child.textContent === '') {
+          isEmpty = true
+        }
+      }
+
+      if (isEmpty) {
+        // Map position to account for previous deletions
+        const mappedPos = tr.mapping.map(pos)
+        const mappedNode = tr.doc.nodeAt(mappedPos)
+        if (mappedNode && mappedNode.type.name === 'page') {
+          tr.delete(mappedPos, mappedPos + mappedNode.nodeSize)
+          modified = true
+        }
+      }
+    }
+    return modified
+  })
 }

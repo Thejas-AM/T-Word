@@ -1,6 +1,6 @@
 import { Node } from '@tiptap/core'
 import { TextSelection } from 'prosemirror-state'
-// import './pageNode.css'
+import './pageNode.css'
 
 const HEADER_FOOTER_SPACE = 80
 
@@ -70,7 +70,7 @@ const Page = Node.create({
         if (!prevNode || !currentNode) return false
 
         let firstOffset: number | null = null
-        currentNode.forEach((child: any, offset: number) => {
+        currentNode.forEach((_child: any, offset: number) => {
           if (firstOffset === null) firstOffset = offset
         })
         if (firstOffset === null) return false
